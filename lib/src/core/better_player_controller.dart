@@ -340,6 +340,9 @@ class BetterPlayerController {
           setAudioTrack(_betterPlayerAsmsAudioTracks!.first);
         }
       }
+
+      /// ✅ Post custom event when all ASM data has been parsed
+      _postEvent(BetterPlayerEvent(BetterPlayerEventType.dataLoaded));
     }
   }
 
@@ -962,9 +965,19 @@ class BetterPlayerController {
     if (wasPlayingBeforeChange) {
       play();
     }
+
+    // Get current video size (width & height)
+    final size = videoPlayerController!.value.size;
+    final width = size?.width ?? 0;
+    final height = size?.height ?? 0;
+
     _postEvent(BetterPlayerEvent(
       BetterPlayerEventType.changedResolution,
-      parameters: <String, dynamic>{"url": url},
+      parameters: <String, dynamic>{
+        "url": url,
+        "width": width,
+        "height": height,
+      },
     ));
   }
 
