@@ -254,11 +254,23 @@ static inline CGFloat radiansToDegrees(CGFloat radians) {
                         // https://developer.apple.com/documentation/avfoundation/avplayeritem/1388818-videocomposition
                         // Video composition can only be used with file-based media and is not supported for
                         // use with media served using HTTP Live Streaming.
-                        AVMutableVideoComposition* videoComposition =
-                        [self getVideoCompositionWithTransform:self->_preferredTransform
-                                                     withAsset:asset
-                                                withVideoTrack:videoTrack];
-                        item.videoComposition = videoComposition;
+                        
+                        BOOL isHLS = NO;
+                        if ([asset isKindOfClass:[AVURLAsset class]]) {
+                            AVURLAsset* urlAsset = (AVURLAsset*)asset;
+                            NSString* scheme = urlAsset.URL.scheme.lowercaseString;
+                            NSString* pathExtension = urlAsset.URL.pathExtension.lowercaseString;
+                            isHLS = [pathExtension isEqualToString:@"m3u8"] || 
+                                   ([scheme hasPrefix:@"http"] && [urlAsset.URL.absoluteString containsString:@".m3u8"]);
+                        }
+                        
+                        if (!isHLS) {
+                            AVMutableVideoComposition* videoComposition =
+                            [self getVideoCompositionWithTransform:self->_preferredTransform
+                                                         withAsset:asset
+                                                    withVideoTrack:videoTrack];
+                            item.videoComposition = videoComposition;
+                        }
                     }
                 };
                 [videoTrack loadValuesAsynchronouslyForKeys:@[ @"preferredTransform" ]
@@ -544,26 +556,53 @@ static inline CGFloat radiansToDegrees(CGFloat radians) {
 }
 
 - (void)setSpeed:(double)speed result:(FlutterResult)result {
+    NSLog(@"setSpeed called with speed: %f", speed);
+    
     if (speed == 1.0 || speed == 0.0) {
+        NSLog(@"Setting normal speed");
         _playerRate = 1;
         result(nil);
     } else if (speed < 0 || speed > 2.0) {
+        NSLog(@"Speed out of range: %f", speed);
         result([FlutterError errorWithCode:@"unsupported_speed"
                                    message:@"Speed must be >= 0.0 and <= 2.0"
                                    details:nil]);
-    } else if ((speed > 1.0 && _player.currentItem.canPlayFastForward) ||
-               (speed < 1.0 && _player.currentItem.canPlaySlowForward)) {
-        _playerRate = speed;
-        result(nil);
     } else {
-        if (speed > 1.0) {
-            result([FlutterError errorWithCode:@"unsupported_fast_forward"
-                                       message:@"This video cannot be played fast forward"
-                                       details:nil]);
+        BOOL isHLS = NO;
+        AVAsset* asset = _player.currentItem.asset;
+        if ([asset isKindOfClass:[AVURLAsset class]]) {
+            AVURLAsset* urlAsset = (AVURLAsset*)asset;
+            NSString* scheme = urlAsset.URL.scheme.lowercaseString;
+            NSString* pathExtension = urlAsset.URL.pathExtension.lowercaseString;
+            NSLog(@"URL: %@", urlAsset.URL.absoluteString);
+            NSLog(@"Scheme: %@, Extension: %@", scheme, pathExtension);
+            isHLS = [pathExtension isEqualToString:@"m3u8"] || 
+                   ([scheme hasPrefix:@"http"] && [urlAsset.URL.absoluteString containsString:@".m3u8"]);
+        }
+        
+        NSLog(@"isHLS: %@, canPlayFastForward: %@, canPlaySlowForward: %@", 
+              isHLS ? @"YES" : @"NO", 
+              _player.currentItem.canPlayFastForward ? @"YES" : @"NO",
+              _player.currentItem.canPlaySlowForward ? @"YES" : @"NO");
+        
+        if (isHLS || 
+            (speed > 1.0 && _player.currentItem.canPlayFastForward) ||
+            (speed < 1.0 && _player.currentItem.canPlaySlowForward)) {
+            NSLog(@"Setting speed to: %f", speed);
+            _playerRate = speed;
+            result(nil);
         } else {
-            result([FlutterError errorWithCode:@"unsupported_slow_forward"
-                                       message:@"This video cannot be played slow forward"
-                                       details:nil]);
+            if (speed > 1.0) {
+                NSLog(@"Fast forward not supported");
+                result([FlutterError errorWithCode:@"unsupported_fast_forward"
+                                           message:@"This video cannot be played fast forward"
+                                           details:nil]);
+            } else {
+                NSLog(@"Slow forward not supported");
+                result([FlutterError errorWithCode:@"unsupported_slow_forward"
+                                           message:@"This video cannot be played slow forward"
+                                           details:nil]);
+            }
         }
     }
 
